@@ -3,14 +3,27 @@ import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# PDF extraction support
+# ---------------------------------------------------------
+# Optional Library Imports for File Support & OpenAI
+# ---------------------------------------------------------
 try:
     import pypdf
     HAS_PYPDF = True
 except ImportError:
     HAS_PYPDF = False
 
-# OpenAI support
+try:
+    import docx
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
+
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+
 try:
     from openai import OpenAI
     HAS_OPENAI = True
@@ -22,16 +35,17 @@ except ImportError:
 # Helper Function: Extract Multilingual Text from Uploaded Files
 # ---------------------------------------------------------
 def read_uploaded_file(uploaded_file) -> str:
-    """Extracts text content from uploaded .txt, .md, or .pdf files supporting multilingual scripts."""
+    """Extracts text content from .txt, .md, .pdf, .docx, .xlsx, and .csv files."""
     if uploaded_file is None:
         return ""
 
     file_name = uploaded_file.name.lower()
     
+    # 1. Plain Text & Markdown Files
     if file_name.endswith((".txt", ".md")):
-        # Read as UTF-8 to preserve English, Indonesian, and Javanese characters
         return uploaded_file.read().decode("utf-8", errors="ignore")
     
+    # 2. PDF Documents
     elif file_name.endswith(".pdf"):
         if not HAS_PYPDF:
             st.warning("⚠️ `pypdf` library missing. Install via `pip install pypdf` to read PDF files.")
@@ -47,8 +61,37 @@ def read_uploaded_file(uploaded_file) -> str:
         except Exception as e:
             st.error(f"Error reading PDF file: {e}")
             return ""
+
+    # 3. Microsoft Word Documents (.docx)
+    elif file_name.endswith(".docx"):
+        if not HAS_DOCX:
+            st.warning("⚠️ `python-docx` missing. Install via `pip install python-docx` to read Word files.")
+            return ""
+        try:
+            doc = docx.Document(uploaded_file)
+            full_text = [para.text for para in doc.paragraphs if para.text.strip()]
+            return "\n".join(full_text)
+        except Exception as e:
+            st.error(f"Error reading Word document: {e}")
+            return ""
+
+    # 4. Excel & CSV Spreadsheets (.xlsx, .csv)
+    elif file_name.endswith((".xlsx", ".csv")):
+        if not HAS_PANDAS:
+            st.warning("⚠️ `pandas` missing. Install via `pip install pandas openpyxl` to read Excel/CSV files.")
+            return ""
+        try:
+            if file_name.endswith(".csv"):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            return df.to_string(index=False)
+        except Exception as e:
+            st.error(f"Error reading spreadsheet: {e}")
+            return ""
+
     else:
-        st.error("Unsupported file format. Please upload a .txt, .md, or .pdf file.")
+        st.error("Unsupported file format. Please upload a .txt, .md, .pdf, .docx, .xlsx, or .csv file.")
         return ""
 
 
@@ -146,7 +189,7 @@ class AuthenticityVerifier:
         if not text_a.strip() or not text_b.strip():
             return 0.0
         
-        # Use English stop-words for English, disable standard stop-words for Indonesian/Javanese to prevent filtering vocabulary
+        # Enable English stop-words for English, disable standard stop-words for Indonesian/Javanese
         stop_words_setting = 'english' if language == "English" else None
         
         vectorizer = TfidfVectorizer(stop_words=stop_words_setting)
@@ -191,7 +234,11 @@ if role == "Student Mode":
     # ----------------------------------
     with tab1:
         st.subheader("1. Grounding Material (Mandatory)")
-        mat_file = st.file_uploader("Upload Learning Material File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="mat_file")
+        mat_file = st.file_uploader(
+            "Upload Learning Material File (.txt, .md, .pdf, .docx, .xlsx, .csv)", 
+            type=["txt", "md", "pdf", "docx", "xlsx", "csv"], 
+            key="mat_file"
+        )
         mat_file_text = read_uploaded_file(mat_file) if mat_file else ""
         
         learning_material = st.text_area(
@@ -202,7 +249,11 @@ if role == "Student Mode":
         )
 
         st.subheader("2. Student Submission")
-        sub_file = st.file_uploader("Upload Answer Document File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="sub_file")
+        sub_file = st.file_uploader(
+            "Upload Answer Document File (.txt, .md, .pdf, .docx, .xlsx, .csv)", 
+            type=["txt", "md", "pdf", "docx", "xlsx", "csv"], 
+            key="sub_file"
+        )
         sub_file_text = read_uploaded_file(sub_file) if sub_file else ""
 
         student_input = st.text_area(
@@ -231,7 +282,11 @@ if role == "Student Mode":
         st.write("Compare your original assignment text against a short written summary to verify conceptual ownership.")
 
         st.markdown("#### Step 1: Original Written Work")
-        orig_file = st.file_uploader("Upload Original Assignment File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="orig_file")
+        orig_file = st.file_uploader(
+            "Upload Original Assignment File (.txt, .md, .pdf, .docx, .xlsx, .csv)", 
+            type=["txt", "md", "pdf", "docx", "xlsx", "csv"], 
+            key="orig_file"
+        )
         orig_file_text = read_uploaded_file(orig_file) if orig_file else ""
         
         original_doc = st.text_area(
@@ -242,7 +297,11 @@ if role == "Student Mode":
         )
 
         st.markdown("#### Step 2: Student Summary")
-        sum_file = st.file_uploader("Upload Summary File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="sum_file")
+        sum_file = st.file_uploader(
+            "Upload Summary File (.txt, .md, .pdf, .docx, .xlsx, .csv)", 
+            type=["txt", "md", "pdf", "docx", "xlsx", "csv"], 
+            key="sum_file"
+        )
         sum_file_text = read_uploaded_file(sum_file) if sum_file else ""
 
         typed_summary = st.text_area(
@@ -299,7 +358,11 @@ else:
         if teacher_option == "AI Vulnerability Audit":
             st.subheader("Assignment Vulnerability Analysis")
             
-            t_file = st.file_uploader("Upload Draft Question / Prompt File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="t_file")
+            t_file = st.file_uploader(
+                "Upload Draft Question / Prompt File (.txt, .md, .pdf, .docx, .xlsx, .csv)", 
+                type=["txt", "md", "pdf", "docx", "xlsx", "csv"], 
+                key="t_file"
+            )
             t_file_text = read_uploaded_file(t_file) if t_file else ""
 
             draft_question = st.text_area(
