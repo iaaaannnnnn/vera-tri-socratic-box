@@ -80,35 +80,45 @@ if "auth_attempts" not in st.session_state:
 # Core Logic Engines
 # ---------------------------------------------------------
 class SocraticSandbox:
-    """Module 1: Material-grounded, minimal-feedback cynical tutor."""
-    def __init__(self, api_key: str = None):
+    """Module 1: Multilingual, material-grounded, minimal-feedback cynical tutor."""
+    def __init__(self, api_key: str = None, language: str = "English"):
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.client = OpenAI(api_key=self.api_key) if (HAS_OPENAI and self.api_key) else None
+        self.language = language
+
+        # Language-specific persona instructions
+        lang_instructions = {
+            "English": "Respond exclusively in English.",
+            "Indonesian": "Jawablah seluruhnya dalam Bahasa Indonesia yang baku dan lugas.",
+            "Javanese": "Wangsulana kabeh nganggo Basa Jawa ingkang trep (Krama utawa Ngoko lugu manut konteks)."
+        }
 
         self.system_prompt = (
-            "You are a Socratic Sandbox AI Tutor. You possess a brief, neutral, cold, "
-            "and deliberately cynical personality. Your primary goal is to evaluate student answers "
-            "STRICTLY using the provided learning materials.\n"
-            "OPERATIONAL RULES:\n"
-            "1. Material-grounded: Judge answers ONLY using the uploaded resource. If material is insufficient, state honest uncertainty.\n"
-            "2. Minimal feedback: Return ONLY a clear verdict ('Correct' or 'Incorrect') and a tiny hint or conceptual gap.\n"
-            "3. NEITHER reveal complete solutions NOR rewrite answers for the student under any circumstances.\n"
-            "4. Keep output brief, direct, and unencouraging."
+            f"You are a Socratic Sandbox AI Tutor. You possess a brief, neutral, cold, "
+            f"and deliberately cynical personality. Your primary goal is to evaluate student answers "
+            f"STRICTLY using the provided learning materials.\n"
+            f"LANGUAGE RULE: {lang_instructions.get(language, 'Respond in English.')}\n"
+            f"OPERATIONAL RULES:\n"
+            f"1. Material-grounded: Judge answers ONLY using the uploaded resource. If material is insufficient, state honest uncertainty.\n"
+            f"2. Minimal feedback: Return ONLY a clear verdict ('Correct'/'Incorrect' or 'Bener'/'Salah') and a tiny hint or conceptual gap.\n"
+            f"3. NEITHER reveal complete solutions NOR rewrite answers for the student under any circumstances.\n"
+            f"4. Keep output brief, direct, and unencouraging."
         )
 
     def evaluate(self, material: str, submission: str) -> str:
         if not material.strip():
-            return "Error: Learning material is mandatory to establish contextual boundaries."
+            return "Error: Grounding learning material is required."
 
         if not self.client:
-            # Fallback mock response if OpenAI key is not provided
-            return (
-                "**VERDICT: Incorrect**\n\n"
-                "*Hint:* Review the primary mechanisms outlined in the material. "
-                "You substituted core concepts with external assumptions."
-            )
+            # Fallback mock responses by language
+            mock_responses = {
+                "English": "**VERDICT: Incorrect**\n\n*Hint:* Review the primary mechanisms outlined in the material.",
+                "Indonesian": "**VONIS: Salah**\n\n*Petunjuk:* Baca kembali mekanisme utama yang ada pada materi.",
+                "Javanese": "**VONIS: Salah**\n\n*Pituduh:* Waca maneh perangan utama sing ana ing materi."
+            }
+            return mock_responses.get(self.language, mock_responses["English"])
 
-        prompt = f"--- LEARNING MATERIAL ---\n{material}\n\n--- STUDENT SUBMISSION ---\n{submission}"
+        prompt = f"--- LEARNING MATERIAL / MATERI ---\n{material}\n\n--- STUDENT SUBMISSION / JAWABAN SISWA ---\n{submission}"
         
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -122,15 +132,19 @@ class SocraticSandbox:
 
 
 class AuthenticityVerifier:
-    """Module 2: Cosine Similarity authenticity verification engine (Text/File driven)."""
+    """Module 2: Cosine Similarity authenticity verification engine supporting multiple languages."""
     def __init__(self, threshold: float = 0.40):
         self.threshold = threshold
 
     @staticmethod
-    def compute_similarity(text_a: str, text_b: str) -> float:
+    def compute_similarity(text_a: str, text_b: str, language: str = "English") -> float:
         if not text_a.strip() or not text_b.strip():
             return 0.0
-        vectorizer = TfidfVectorizer(stop_words='english')
+        
+        # Use English stop-words for English, disable standard stop-words for Indonesian/Javanese to prevent filtering vocabulary
+        stop_words_setting = 'english' if language == "English" else None
+        
+        vectorizer = TfidfVectorizer(stop_words=stop_words_setting)
         tfidf_matrix = vectorizer.fit_transform([text_a, text_b])
         return float(cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0])
 
@@ -141,10 +155,16 @@ class AuthenticityVerifier:
 st.sidebar.title("🛡️ VERA-TRI System")
 st.sidebar.caption("Triple-Engine Curriculum Shielding Platform")
 
+selected_lang = st.sidebar.selectbox(
+    "🌐 Select Interface Language",
+    ["English", "Indonesian", "Javanese"],
+    help="Select the language for Socratic evaluation and text processing."
+)
+
 role = st.sidebar.radio("Select Operational Role", ["Student Mode", "Teacher Mode (Protected)"])
 
 api_key_input = st.sidebar.text_input("OpenAI API Key (Optional)", type="password")
-socratic_engine = SocraticSandbox(api_key=api_key_input)
+socratic_engine = SocraticSandbox(api_key=api_key_input, language=selected_lang)
 verifier = AuthenticityVerifier(threshold=0.40)
 
 
@@ -167,7 +187,6 @@ if role == "Student Mode":
     with tab1:
         st.subheader("1. Grounding Material (Mandatory)")
         mat_file = st.file_uploader("Upload Learning Material (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="mat_file")
-        
         mat_file_text = read_uploaded_file(mat_file) if mat_file else ""
         
         learning_material = st.text_area(
@@ -179,7 +198,6 @@ if role == "Student Mode":
 
         st.subheader("2. Student Submission")
         sub_file = st.file_uploader("Upload Answer Document (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="sub_file")
-        
         sub_file_text = read_uploaded_file(sub_file) if sub_file else ""
 
         student_input = st.text_area(
@@ -233,8 +251,8 @@ if role == "Student Mode":
             if not original_doc.strip() or not typed_summary.strip():
                 st.error("Both the original document and a summary input are required.")
             else:
-                score = verifier.compute_similarity(original_doc, typed_summary)
-                st.markdown(f"#### Cosine Similarity Score: **{score:.4f}**")
+                score = verifier.compute_similarity(original_doc, typed_summary, language=selected_lang)
+                st.markdown(f"#### Cosine Similarity Score ({selected_lang}): **{score:.4f}**")
                 
                 if score >= 0.40:
                     st.success("✅ **VERIFICATION PASSED**: Conceptual alignment verified (Score ≥ 0.40). Assignment authenticated.")
@@ -256,7 +274,7 @@ else:
         st.subheader("🔒 Authentication Required")
         pwd = st.text_input("Enter Teacher Access Password:", type="password")
         if st.button("Login"):
-            if pwd == "veratri2026":  # Default password
+            if pwd == "veratri2026":
                 st.session_state.teacher_authenticated = True
                 st.rerun()
             else:
