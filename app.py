@@ -19,16 +19,17 @@ except ImportError:
 
 
 # ---------------------------------------------------------
-# Helper Function: Extract Text from Uploaded Files
+# Helper Function: Extract Multilingual Text from Uploaded Files
 # ---------------------------------------------------------
 def read_uploaded_file(uploaded_file) -> str:
-    """Extracts text content from uploaded .txt, .md, or .pdf files."""
+    """Extracts text content from uploaded .txt, .md, or .pdf files supporting multilingual scripts."""
     if uploaded_file is None:
         return ""
 
     file_name = uploaded_file.name.lower()
     
     if file_name.endswith((".txt", ".md")):
+        # Read as UTF-8 to preserve English, Indonesian, and Javanese characters
         return uploaded_file.read().decode("utf-8", errors="ignore")
     
     elif file_name.endswith(".pdf"):
@@ -44,7 +45,7 @@ def read_uploaded_file(uploaded_file) -> str:
                     text += extracted + "\n"
             return text.strip()
         except Exception as e:
-            st.error(f"Error reading PDF: {e}")
+            st.error(f"Error reading PDF file: {e}")
             return ""
     else:
         st.error("Unsupported file format. Please upload a .txt, .md, or .pdf file.")
@@ -97,10 +98,11 @@ class SocraticSandbox:
             f"You are a Socratic Sandbox AI Tutor. You possess a brief, neutral, cold, "
             f"and deliberately cynical personality. Your primary goal is to evaluate student answers "
             f"STRICTLY using the provided learning materials.\n"
-            f"LANGUAGE RULE: {lang_instructions.get(language, 'Respond in English.')}\n"
+            f"MULTILINGUAL INSTRUCTION: Parse uploaded files and inputs in whichever language they are written "
+            f"(English, Indonesian, or Javanese). {lang_instructions.get(language, 'Respond in English.')}\n"
             f"OPERATIONAL RULES:\n"
-            f"1. Material-grounded: Judge answers ONLY using the uploaded resource. If material is insufficient, state honest uncertainty.\n"
-            f"2. Minimal feedback: Return ONLY a clear verdict ('Correct'/'Incorrect' or 'Bener'/'Salah') and a tiny hint or conceptual gap.\n"
+            f"1. Material-grounded: Judge answers ONLY using the uploaded resource file/text. If material is insufficient, state honest uncertainty.\n"
+            f"2. Minimal feedback: Return ONLY a clear verdict ('Correct'/'Incorrect', 'Benar'/'Salah', or 'Bener'/'Luput') and a tiny hint or conceptual gap.\n"
             f"3. NEITHER reveal complete solutions NOR rewrite answers for the student under any circumstances.\n"
             f"4. Keep output brief, direct, and unencouraging."
         )
@@ -118,7 +120,10 @@ class SocraticSandbox:
             }
             return mock_responses.get(self.language, mock_responses["English"])
 
-        prompt = f"--- LEARNING MATERIAL / MATERI ---\n{material}\n\n--- STUDENT SUBMISSION / JAWABAN SISWA ---\n{submission}"
+        prompt = (
+            f"--- LEARNING MATERIAL (FILE / TEXT) ---\n{material}\n\n"
+            f"--- STUDENT SUBMISSION (FILE / TEXT) ---\n{submission}"
+        )
         
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -132,7 +137,7 @@ class SocraticSandbox:
 
 
 class AuthenticityVerifier:
-    """Module 2: Cosine Similarity authenticity verification engine supporting multiple languages."""
+    """Module 2: Cosine Similarity authenticity verification engine supporting multiple languages in files."""
     def __init__(self, threshold: float = 0.40):
         self.threshold = threshold
 
@@ -186,18 +191,18 @@ if role == "Student Mode":
     # ----------------------------------
     with tab1:
         st.subheader("1. Grounding Material (Mandatory)")
-        mat_file = st.file_uploader("Upload Learning Material (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="mat_file")
+        mat_file = st.file_uploader("Upload Learning Material File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="mat_file")
         mat_file_text = read_uploaded_file(mat_file) if mat_file else ""
         
         learning_material = st.text_area(
             "Or paste reference text directly:",
             value=mat_file_text,
             height=160,
-            placeholder="Upload a file above or paste study material here..."
+            placeholder="Upload an English, Indonesian, or Javanese file above, or paste study material here..."
         )
 
         st.subheader("2. Student Submission")
-        sub_file = st.file_uploader("Upload Answer Document (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="sub_file")
+        sub_file = st.file_uploader("Upload Answer Document File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="sub_file")
         sub_file_text = read_uploaded_file(sub_file) if sub_file else ""
 
         student_input = st.text_area(
@@ -226,14 +231,14 @@ if role == "Student Mode":
         st.write("Compare your original assignment text against a short written summary to verify conceptual ownership.")
 
         st.markdown("#### Step 1: Original Written Work")
-        orig_file = st.file_uploader("Upload Original Assignment (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="orig_file")
+        orig_file = st.file_uploader("Upload Original Assignment File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="orig_file")
         orig_file_text = read_uploaded_file(orig_file) if orig_file else ""
         
         original_doc = st.text_area(
             "Or paste original assignment text:",
             value=orig_file_text,
             height=140,
-            placeholder="Upload your full assignment above or paste text here..."
+            placeholder="Upload your full assignment file above or paste text here..."
         )
 
         st.markdown("#### Step 2: Student Summary")
@@ -294,7 +299,7 @@ else:
         if teacher_option == "AI Vulnerability Audit":
             st.subheader("Assignment Vulnerability Analysis")
             
-            t_file = st.file_uploader("Upload Draft Question / Prompt (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="t_file")
+            t_file = st.file_uploader("Upload Draft Question / Prompt File (.txt, .md, .pdf)", type=["txt", "md", "pdf"], key="t_file")
             t_file_text = read_uploaded_file(t_file) if t_file else ""
 
             draft_question = st.text_area(
