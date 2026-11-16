@@ -2,4 +2,3 @@ streamlit
 openai
 scikit-learn
 SpeechRecognition
-PyAudio
