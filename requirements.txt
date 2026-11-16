@@ -2,3 +2,6 @@ streamlit
 openai
 scikit-learn
 pypdf
+python-docx
+pandas
+openpyxl
